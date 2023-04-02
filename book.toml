@@ -1,0 +1,6 @@
+[book]
+authors = ["zerodegress"]
+language = "en"
+multilingual = false
+src = "src"
+title = "NGSpice中文文档"
