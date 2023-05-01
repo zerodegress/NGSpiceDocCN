@@ -163,6 +163,89 @@ C2 out 0 100n
 .end
 ```
 
-我没得先讨论下电压源V1。在先前的例子中，它只有一个常数1。现在它更复杂了。手册在章节4.1.1说到：对于一个脉冲我们需要添加PULSE(VL VH TD TR TF PW PER PHASE)到我们电压源的直流电压后面，VL是起始电压，VH是结束电压，TD是起始延迟，TR和TF分别是上升和下降时间，PW是脉冲宽度，PER是重复的周期，PHASE是阶段相位。我们有一个脉冲从0V到5V，脉冲开始前的延迟，它的上升和下降时间都是1微秒。脉冲宽度和脉冲周期都是1秒，所以这里我们只应用脉冲的上升沿。
+我得先讨论下电压源V1。在先前的例子中，它只有一个常数1。现在它更复杂了。手册在章节4.1.1说到：对于一个脉冲我们需要添加PULSE(VL VH TD TR TF PW PER PHASE)到我们电压源的直流电压后面，VL是起始电压，VH是终止电压，TD是延迟，TR和TF分别是上升和下降时间，PW是脉冲宽度，PER是重复的周期，PHASE是相位。我们有一个脉冲从0V到5V，脉冲开始前的延迟，它的上升和下降时间都是1微秒。脉冲宽度和脉冲周期都是1秒，所以这里我们只应用脉冲的上升沿。
+
+现在我们需要的模拟时间是多少？我们的低通滤波器的时间常数主要由R1C1控制，约为1uF*10kOhm = 10ms。因此，我们可以从0开始模拟，一直模拟到50毫秒。我们应该使用1000个数据点，因此步长为50微秒。因此，当你加载电路后，现在的模拟命令是：
+
+```ngspice
+tran 50u 50m
+```
+
+使用命令plot in out在图5中显示了结果。节点'int'和'out'处的电压几乎没有差别。这是因为第一个R1C1主导了电路。第二个R2C2的时间常数比第一个小100倍，因此相对于充电C1，充电C2变得快速且容易。输入节点'in'的电压上升得如此之快，以至于你看不到它的斜率。
+
+![图5](./img/ngspice_for_beginners/fig5-2.png)
+
+图5
+
+## （5）带有被动元件的电路，小信号交流仿真
+
+现在，我们想看看这个rc阶梯网络的小信号行为可能是什么样的。小信号意味着我们将一个直流工作点设置到电路中。然后我们在输入上添加一个小的交流信号，并模拟输出交流电压随频率的变化。因此，我们必须改变这个小输入信号的频率。我们不关心输出电压的绝对值，而是它与输入的关系（增益）以及它与输入的相位差（相位）。幸运的是，ngspice有一个“ac”命令，使得操作变得容易。首先，我们必须告诉ngspice在哪里输入它们的小信号交流电压。我们选择节点“in”，也就是我们的电压源V1。现在V1变成了：
+
+```ngspice
+V1 in 0 dc 0 ac 1 PULSE (0 5 1u 1u 1u 1 1)
+```
+
+我们只是添加了“ac 1”。“dc 0”设置工作点（由于我们的简单电路，这并不重要），“PULSE”只在瞬态仿真期间有作用，因此为简单起见，我们保留它。'ac 1'中的1只是为了方便我们得到输出和输入之间的比率，通过将输出除以1或直接使用。仿真命令为：
+
+```ngspice
+ac dec 10 1 100k
+```
+
+我们想要进行一次“ac”仿真。我们按对数方式变化频率，每个数量级有10个点。起始频率为1 Hz，停止频率为100 kHz。因此，我们将获得51个数据点。如果现在使用命令plot out绘图，图形看起来很丑（输出低于0？）。好吧，我们正在处理交流信号。这些是复数，由实部和虚部组成（或等效地由幅度和相位组成）。传统上，plot out只提供信号的实部。但我们想要看到幅度（或增益）和相位，就像在波德图中一样。因此，应使用plot vdb（out）表示增益（以dB为单位），使用plot ph（out）表示相位。现在图形是可以的，但是标题和标签还不令人满意。这里需要一些手动调整ngspice绘图程序。
+
+但是，在我们继续之前，我们必须简化我们的方法。在控制台中键入所有内容似乎很烦人。ngspice有一种机制，可以将所有交互式命令（我们已输入的命令）汇编到一个.control ... .endc部分中。这个.control部分可以添加到电路网表中，现在看起来像这样：
+
+```ngspice
+.title dual rc ladder
+* file name rcrcac.cir
+R1 int in 10k
+V1 in 0 dc 0 ac 1 PULSE (0 5 1u 1u 1u 1 1)
+R2 out int 1k
+C1 int 0 1u
+C2 out 0 100n
+
+.control
+ac dec 10 1 100k
+plot vdb(out)
+plot ph(out)
+.endc
+
+.**end**
+```
+
+现在我们可以通过命令“ngspice rcrcac.cir”启动ngspice。该电路图被读取，并自动执行.control部分中的命令（ac仿真和绘图）。但我们仍希望改进图形绘制。我们通过使用多个额外命令来实现这一点，这些命令被添加到.control部分。所有这些命令都在[ngspice手册](https://sourceforge.net/projects/ngspice/files/ng-spice-rework/35/ngspice-35-manual.pdf/download)的第17.5章中有描述。完整的输入文件现在如下所示：
+
+```ngspice
+.title dual rc ladder
+* file name rcrcac.cir
+R1 int in 10k
+V1 in 0 dc 0 ac 1 PULSE (0 5 1u 1u 1u 1 1)
+R2 out int 1k
+C1 int 0 1u
+C2 out 0 100n
+
+.control
+ac dec 10 1 100k
+settype decibel out
+plot vdb(out) xlimit 1 100k ylabel 'small signal gain'
+settype phase out
+plot cph(out) xlimit 1 100k ylabel 'phase (in rad)'
+let outd = 180/PI*cph(out)
+settype phase outd
+plot outd xlimit 1 100k ylabel 'phase'
+.endc
+
+.end
+```
+
+这是我们在仿真和绘图后看到的结果：
+
+![图6](img/ngspice_for_beginners/fig6.png)
+
+图6 双RC阶梯电路的小信号增益和相位差
+
+## （6）下载和安装一个简单的GUI（MS Windows）
+
+我习惯使用MS Windows，所以我不想一直敲命令，而是想用鼠标选择文件、启动仿真并绘制结果。因此，我使用（并提供下载）一个小型GUI，如图7所示。安装方法很简单，只需将这四个文件解压到您选择的文件夹中即可。DuSpiceStart.exe是主要的可执行文件。DuSpicePlot.exe读取原始文件并准备绘图。DuSpiceStart.ini包含设置数据。plot_spex3.xlsm包含一些VB宏，允许使用EXCEL绘图。
 
 (WIP)
